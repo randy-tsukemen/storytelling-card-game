@@ -4,11 +4,15 @@ export type PersonalityType =
   | 'ISTJ' | 'ISFJ' | 'ESTJ' | 'ESFJ'
   | 'ISTP' | 'ISFP' | 'ESTP' | 'ESFP';
 
+export type WorldType = 'DYNASTY' | 'FOUNDATION';
+export type SimulationType = 'FIRST' | 'SECOND' | 'THIRD';
+
 export interface Choice {
   id: string;
   text: string;
   personality: PersonalityType;
   nextStageId: string;
+  consequences?: string[];
 }
 
 export interface StoryStage {
@@ -16,6 +20,12 @@ export interface StoryStage {
   narrative: string;
   choices: Choice[];
   isEnding?: boolean;
+  worldType: WorldType;
+  simulationType: SimulationType;
+  emotionImpact?: {
+    trust: number;
+    bond: number;
+  };
 }
 
 export interface Badge {
@@ -25,6 +35,8 @@ export interface Badge {
   personality: PersonalityType;
   imageUrl: string;
   isUnlocked: boolean;
+  worldType: WorldType;
+  simulationType: SimulationType;
 }
 
 export interface GameState {
@@ -34,5 +46,14 @@ export interface GameState {
     stageId: string;
     choiceId: string;
     personality: PersonalityType;
+    worldType: WorldType;
+    simulationType: SimulationType;
   }[];
+  currentWorld: WorldType;
+  currentSimulation: SimulationType;
+  emotionStats: {
+    trust: number;
+    bond: number;
+  };
+  unlockedMemories: string[];
 } 
