@@ -1,28 +1,37 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { GameState, Choice, Badge, StoryStage, PersonalityType } from '../types/game';
+import { GameState, Choice, Badge, StoryStage, PersonalityType, StoryHistoryEntry, ChapterProgress, WorldType, SimulationType } from '../types/game';
 import { generateStoryContent } from '../services/gemini';
+import { getNovelContent, getChapterTitle } from '../services/novelService';
+
+const initialChapterProgress: ChapterProgress = {
+  currentChapter: 1,
+  totalChapters: 8,
+  choicesInChapter: 0,
+  requiredChoices: 2
+};
 
 const initialStage: StoryStage = {
   id: 'start',
-  narrative: '在這個神秘的世界中，你即將開始一段與女帝的命運糾纏。每一個選擇都將影響故事的走向，也將決定你們之間的羈絆...',
+  narrative: '一陣頭暈目眩後，你發現自己來到了一個陌生的世界。眼前是金碧輝煌的宮殿，空氣中瀰漫著一股神秘的氣息。你知道，這裡是一個架空的古代王朝，而你即將與這個王朝的女帝產生不解之緣...',
   worldType: 'DYNASTY',
   simulationType: 'FIRST',
+  chapterTitle: '序章：穿越初始',
   choices: [
     {
-      id: 'protect',
-      text: '以護衛的身份守護女帝，暗中調查真相',
+      id: 'guard',
+      text: '參加禁衛選拔，以武藝出眾的表現進入宮廷',
       personality: 'ISTJ',
       nextStageId: 'palace_guard',
-      consequences: ['你將成為女帝的貼身護衛，但也意味著要面對宮廷中的明爭暗鬥']
+      consequences: ['你將有機會近距離保護女帝，但需要面對宮廷中的明爭暗鬥']
     },
     {
-      id: 'investigate',
-      text: '以諜報人員的身份潛入，探索背後的陰謀',
+      id: 'scholar',
+      text: '通過科舉考試，以才學見長的形象進入朝廷',
       personality: 'INTJ',
-      nextStageId: 'secret_agent',
-      consequences: ['你將能夠自由行動，但需要時刻提防被發現的風險']
+      nextStageId: 'court_scholar',
+      consequences: ['你能夠參與朝政，接觸到更多機密信息，但也要應對各方勢力的試探']
     }
   ]
 };
@@ -37,7 +46,8 @@ const initialState: GameState = {
     trust: 50,
     bond: 50
   },
-  unlockedMemories: []
+  unlockedMemories: [],
+  chapterProgress: initialChapterProgress
 };
 
 interface GameContextType {
@@ -56,11 +66,15 @@ type GameAction =
   | { type: 'UPDATE_EMOTIONS'; payload: { trust: number; bond: number } }
   | { type: 'UNLOCK_MEMORY'; payload: string }
   | { type: 'SET_WORLD'; payload: WorldType }
-  | { type: 'SET_SIMULATION'; payload: SimulationType };
+  | { type: 'SET_SIMULATION'; payload: SimulationType }
+  | { type: 'ADVANCE_CHAPTER' };
 
 const gameReducer = (state: GameState, action: GameAction): GameState => {
   switch (action.type) {
-    case 'MAKE_CHOICE':
+    case 'MAKE_CHOICE': {
+      const newChoicesInChapter = state.chapterProgress.choicesInChapter + 1;
+      const shouldAdvanceChapter = newChoicesInChapter >= state.chapterProgress.requiredChoices;
+
       return {
         ...state,
         storyHistory: [
@@ -68,11 +82,32 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
           {
             stageId: state.currentStage?.id || '',
             choiceId: action.payload.id,
+            choiceText: action.payload.text,
+            narrative: state.currentStage?.narrative || '',
+            consequence: action.payload.consequences?.[0] || '',
             personality: action.payload.personality,
             worldType: state.currentWorld,
-            simulationType: state.currentSimulation
+            simulationType: state.currentSimulation,
+            chapterTitle: state.currentStage?.chapterTitle
           },
         ],
+        chapterProgress: {
+          ...state.chapterProgress,
+          choicesInChapter: shouldAdvanceChapter ? 0 : newChoicesInChapter,
+          currentChapter: shouldAdvanceChapter 
+            ? Math.min(state.chapterProgress.currentChapter + 1, state.chapterProgress.totalChapters)
+            : state.chapterProgress.currentChapter
+        }
+      };
+    }
+    case 'ADVANCE_CHAPTER':
+      return {
+        ...state,
+        chapterProgress: {
+          ...state.chapterProgress,
+          currentChapter: state.chapterProgress.currentChapter + 1,
+          choicesInChapter: 0
+        }
       };
     case 'START_NEW_GAME':
       return initialState;
@@ -145,6 +180,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'MAKE_CHOICE', payload: choice });
 
     try {
+      // Get novel content based on current progress
+      const novelContent = getNovelContent(state.chapterProgress);
+      
+      // Generate AI response for the choice consequences
       const storyContent = await generateStoryContent({
         currentStage: choice.nextStageId,
         choiceMade: choice.text,
@@ -152,19 +191,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
         storyHistory: state.storyHistory.map(h => h.stageId),
         worldType: state.currentWorld,
         simulationType: state.currentSimulation,
-        emotionStats: state.emotionStats
+        emotionStats: state.emotionStats,
+        chapterProgress: state.chapterProgress
       });
 
+      // Combine novel content with AI-generated consequences
       const nextStage: StoryStage = {
         id: choice.nextStageId,
-        narrative: storyContent.narrative,
-        choices: storyContent.choices.map((c: GeneratedChoice, index: number) => ({
-          ...c,
-          id: `${choice.nextStageId}_${index}`
+        narrative: novelContent.currentContent.join('\n'),
+        choices: novelContent.availableChoices.map((c, index) => ({
+          id: `${choice.nextStageId}_${index}`,
+          text: c.text,
+          personality: choice.personality,
+          nextStageId: `${state.chapterProgress.currentChapter}_${state.chapterProgress.choicesInChapter + 1}_${index}`,
+          consequences: c.consequences
         })),
         worldType: state.currentWorld,
         simulationType: state.currentSimulation,
-        emotionImpact: storyContent.emotionImpact
+        emotionImpact: storyContent.emotionImpact,
+        chapterTitle: getChapterTitle(state.chapterProgress.currentChapter)
       };
 
       if (storyContent.emotionImpact) {

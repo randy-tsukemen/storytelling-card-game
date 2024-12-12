@@ -7,12 +7,20 @@ export type PersonalityType =
 export type WorldType = 'DYNASTY' | 'FOUNDATION';
 export type SimulationType = 'FIRST' | 'SECOND' | 'THIRD';
 
+export interface ChapterProgress {
+  currentChapter: number;
+  totalChapters: number;
+  choicesInChapter: number;
+  requiredChoices: number;
+}
+
 export interface Choice {
   id: string;
   text: string;
   personality: PersonalityType;
   nextStageId: string;
   consequences?: string[];
+  isChapterEnd?: boolean;
 }
 
 export interface StoryStage {
@@ -26,6 +34,7 @@ export interface StoryStage {
     trust: number;
     bond: number;
   };
+  chapterTitle?: string;
 }
 
 export interface Badge {
@@ -39,16 +48,22 @@ export interface Badge {
   simulationType: SimulationType;
 }
 
+export interface StoryHistoryEntry {
+  stageId: string;
+  choiceId: string;
+  choiceText: string;
+  narrative: string;
+  consequence: string;
+  personality: PersonalityType;
+  worldType: WorldType;
+  simulationType: SimulationType;
+  chapterTitle?: string;
+}
+
 export interface GameState {
   currentStage: StoryStage | null;
   collectedBadges: Badge[];
-  storyHistory: {
-    stageId: string;
-    choiceId: string;
-    personality: PersonalityType;
-    worldType: WorldType;
-    simulationType: SimulationType;
-  }[];
+  storyHistory: StoryHistoryEntry[];
   currentWorld: WorldType;
   currentSimulation: SimulationType;
   emotionStats: {
@@ -56,4 +71,5 @@ export interface GameState {
     bond: number;
   };
   unlockedMemories: string[];
+  chapterProgress: ChapterProgress;
 } 
